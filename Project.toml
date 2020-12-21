@@ -3,6 +3,9 @@ uuid = "d2a218f5-c9f8-4bfd-b3ab-fe354e20ba05"
 authors = ["David Gustavsson <david.e.gustavsson@gmail.com> and contributors"]
 version = "0.1.0"
 
+[deps]
+SymEngine = "123dc426-2d89-5057-bbad-38513e3affd8"
+
 [compat]
 julia = "1"
 
