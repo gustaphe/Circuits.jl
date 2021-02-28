@@ -1,167 +1,138 @@
-# TODO
-# Improve typing (parametrize components' numeric types?)
-
 module Circuits
+using Latexify
 
-using SymEngine, LightGraphs
-#using Symata # For the future. It's currently broken?
-import Base: +,//,div,IteratorEltype,IteratorSize,length,EltypeUnknown,HasLength,iterate
-import Base: show
-export ArbitraryComponent,Resistor,Capacitor,Inductor,Series,Parallel
-export impedance,invadd, voltageDivision
+export Circuit, Resistor, Inductor, Capacitor, Short, Battery, VSource, SinusSource
+
+import Base.show
 
 abstract type AbstractComponent end
-AbstractComponent(Z) = ArbitraryComponent(Z)
+abstract type Impedor <: AbstractComponent end
+abstract type Source <: AbstractComponent end
 
-"""
-Arbitrary component
-"""
-struct ArbitraryComponent <: AbstractComponent
-    Z # Impedance (Laplace space)
-end
-impedance(x::ArbitraryComponent) = x.Z
-function show(io::IO,mime::MIME"text/plain",x::ArbitraryComponent)
-    print(io,"?(")
-    show(io,mime,x.Z)
-    print(io,")")
+# Circuit {{{
+struct Circuit # Could be considered a graph?
+    coordinates::Vector{Tuple{Float64,Float64}}
+    connections::Dict{Tuple{Int64,Int64},<:AbstractComponent}
 end
 
-struct Resistor <: AbstractComponent
-    R # Resistance
-end
-impedance(x::Resistor) = x.R
-function show(io::IO,mime::MIME"text/plain",x::Resistor)
-    print(io,"R(")
-    show(io,mime,x.R)
-    print(io," Ω)")
+function show(io::IO, m::MIME"text/plain", x::Circuit)
+    print(io,"Circuit with ",
+          length(x.coordinates)," nodes, ",
+          count(isa.(values(x.connections), Impedor))," impedors and ",
+          count(isa.(values(x.connections), Source))," sources.",
+         )
+
 end
 
-struct Capacitor <: AbstractComponent
-    C # Capacitance
-end
-impedance(x::Capacitor) = inv(symbols(:s)*x.C)
-function show(io::IO,mime::MIME"text/plain",x::Capacitor)
-    print(io,"C(")
-    show(io,mime,x.C)
-    print(io," F)")
-end
-
-struct Inductor <: AbstractComponent
-    L # Inductance
-end
-impedance(x::Inductor) = symbols(:s)*x.L
-function show(io::IO,mime::MIME"text/plain",x::Inductor)
-    print(io,"L(")
-    show(io,mime,x.L)
-    print(io," H)")
-end
-
-struct Series <: AbstractComponent
-    l::Tuple#{<:AbstractComponent}
-end
-Series(x::Vararg{<:AbstractComponent}) = Series(x)
-impedance(x::Series) = impedance(+(x...))
-iterate(x::Series,state...) = iterate(x.l,state...)
-IteratorEltype(::Series) = EltypeUnknown()
-IteratorSize(::Series) = HasLength()
-length(x::Series) = length(x.l)
-
-function show(io::IO, mime::MIME"text/plain", x::Series)
-    print(io,"(")
-    (val,state) = iterate(x)
-    show(io,mime,val)
-    for val in Iterators.rest(x,state)
-        print(io," ── ")
-        show(io,mime,val)
+function show(io::IO, m::MIME"text/circuitikz", x::Circuit; shownodes=false)
+    print(io,"\\draw %\n")
+    for (k,v) in x.connections
+        print(io,"\t(",join(x.coordinates[k[1]],','),") to[")
+        show(io, m, v)
+        print(io,"] (",join(x.coordinates[k[2]],','),") %\n")
     end
-    print(io,")")
-end
-
-
-struct Parallel <: AbstractComponent
-    l::Tuple#{<:AbstractComponent}
-end
-Parallel(x::Vararg{<:AbstractComponent}) = Parallel(x)
-impedance(x::Parallel) = impedance(//(x...))
-iterate(x::Parallel,state...) = iterate(x.l,state...)
-IteratorEltype(::Parallel) = EltypeUnknown()
-IteratorSize(::Parallel) = HasLength()
-length(x::Parallel) = length(x.l)
-
-function show(io::IO, mime::MIME"text/plain", x::Parallel)
-    print(io,"(")
-    (val,state) = iterate(x)
-    show(io,mime,val)
-    for val in Iterators.rest(x,state)
-        print(io," ││ ")
-        show(io,mime,val)
+    print(io,"\t;")
+    if shownodes
+        print(io, "\\path[red, every node/.style={circle,draw=red,fill=white}]")
+        for (i,c) = enumerate(x.coordinates)
+            print(io, " (",join(c,','),") node {",i,"}")
+        end
+        print(io, ";\n")
     end
-    print(io,")")
+end
+# }}}
+
+# Component macro {{{
+macro component(args...)
+    esc(component_helper(args...))
 end
 
+function component_helper(type,name,circuitikzname,parameters...)
 
-abstract type AbstractSource <: AbstractComponent end
-abstract type VoltageSource <: AbstractSource end
-voltageDivision(::VoltageSource) = 0 # Voltage sources are replaced by short circuits
-abstract type CurrentSource <: AbstractSource end
+#  Struct generation {{{
+    structexpr = Expr(
+                      :struct, false, Expr(
+                                           :<:, isempty(parameters) ?
+                                           name : Expr(
+                                                       :curly,
+                                                       name,
+                                                       :(T<:Number)
+                                                      ),
+                                           type
+                                          ),
+                      Expr(:block, Expr.(:(::),parameters,:T)...)
+                     )
+#  }}}
 
-struct HeavisideVoltageSource
-    V
+#  Show generation {{{
+    showexpr = Expr(
+                    :function,
+                    Expr(:call, :show,
+                         :(io::IO), :(m::MIME"text/plain"),
+                         Expr(:(::),:x,name),
+                        ),
+                    Expr(:block,
+                         Expr(:call,:print,:io,string(name)),
+                         isempty(parameters) ? nothing : Expr(:block,
+                                                              :(print(io,'(')),
+                                                                Expr.(:call,:show,:io,
+                                                                      :m,Expr.(:.,:x,QuoteNode.(parameters))
+                                                                     )...,
+                                                                :(print(io,')')),
+                                                             )
+                        )
+                   )
+#  }}}
+
+#  Circuitikz generation {{{
+    circuitikzexpr = Expr(
+                          :function,
+                          Expr(:call, :show,
+                               :(io::IO), :(::MIME"text/circuitikz"),
+                               Expr(:(::),:x,name),
+                              ),
+                          Expr(:block,
+                               Expr(:call,:print,:io,string(circuitikzname)),
+                               isempty(parameters) ? nothing : Expr(:block,
+                                                                    :(print(io,'=')),
+                                                                    Expr(:call,:print,:io,
+                                                                         Expr(:call,
+                                                                              :latexify,
+                                                                              Expr(:.,:x,QuoteNode(first(parameters)))
+                                                                             )
+                                                                        )
+                                                                   )
+                              )
+                         )
+#  }}}
+
+    Expr(:block,
+         structexpr,
+         showexpr,
+         circuitikzexpr,
+        )
 end
-voltage(x::HeavisideVoltagesource) = x.V
-function show(io::IO, mime::MIME"text/plain", x::HeavisideVoltageSource)
-    print(io,"(- ")
-    show(io,mime,x.V)
-    print(io," +)")
-end
+# Component macro }}}
+
+##= Generate components {{{
+#           type        name        circuitikzname  parameters
+@component  Impedor     Resistor    R               R
+@component  Impedor     Capacitor   C               C
+@component  Impedor     Inductor    L               L
+@component  Impedor     Short       short
+
+@component  Source      Battery     battery         U
+@component  Source      VSource     battery1        U
+@component  Source      SinusSource vsourcesin      U ω
 
 
+impedance(x::Resistor, s=Inf) = x.R
+impedance(x::Capacitor, s=Inf) = s*x.C
+impedance(x::Inductor, s=Inf) = 1/(s*x.L)
+impedance(x::Short, s=Inf) = 0
 
-
-
-"""
-```julia
-+(a::AbstractComponent, b::AbstractComponent)
-```
-An equivalent component to the components in series. Use the `Series` type to
-maintain the representation of each component without simplifying.
-"""
-+(x::Vararg{<:AbstractComponent}) = ArbitraryComponent(+(impedance.(x)...))
-+(x::Vararg{Resistor}) = Resistor(+(getproperty.(x,:R)...))
-+(x::Vararg{Capacitor}) = Capacitor(invadd(getproperty.(x,:C)...))
-+(x::Vararg{Inductor}) = Inductor(+(getproperty.(x,:L)...))
-
-"""
-```julia
-//(a::AbstractComponent, b::AbstractComponent)
-```
-An equivalent component to the components in parallel. Use the `Parallel` type
-to maintain the representation of each component without simplifying.
-"""
-(//)(x::Vararg{AbstractComponent}) = ArbitraryComponent(invadd(impedance.(x)...))
-(//)(x::Vararg{Resistor}) = Resistor(invadd(getproperty.(x,:R)...))
-(//)(x::Vararg{Capacitor}) = Capacitor(+(getproperty.(x,:C)...))
-(//)(x::Vararg{Inductor}) = Inductor(invadd(getproperty.(x,:L)...))
-
-"""
-```julia
-invadd(a, b, ...)
-```
-the reciprocal sum of reciprocals (for parallel components):
-```doctest
-julia> invadd(1//1, 3//1, 5//1) # == 1//(1//1 + 1//2 + 1//3) == 6//11
-6//11
-```
-"""
-invadd(varargs...) = inv(+(inv.(varargs)...))
-
-voltageDivision(::AbstractComponent) = 1
-voltageDivision(p::Parallel) = Tuple( isa(x,Parallel)||isa(x,Series) ?
-                                  (voltageDivision(x)) : 1 for x in p )
-voltageDivision(s::Series) = Tuple( isa(x,Parallel)||isa(x,Series) ?
-                                   (voltageDivision(x)).*impedance(x)./impedance(+(s...)) :
-                              impedance(x)/impedance(+(s...)) for x in s )
-
-
-
+voltage(x::Battery, s=Inf) = x.U
+voltage(x::VSource, s=Inf) = x.U
+voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
+# }}}=#
 end
