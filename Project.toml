@@ -7,6 +7,7 @@ version = "0.1.0"
 Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 
 [compat]
+Latexify = "0.14"
 julia = "1"
 
 [extras]
