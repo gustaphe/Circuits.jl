@@ -346,31 +346,57 @@ length(x::Parallel) = length(x.l)
 # Parallel }}}
 
 # Parameters of components {{{
-impedance(x::Resistor, s=Inf) = x.R
-impedance(x::Capacitor, s=Inf) = 1/(s*x.C)
-impedance(x::Inductor, s=Inf) = s*x.L
-impedance(x::Short, s=Inf) = 0
-impedance(x::Open, s=Inf) = Inf
-impedance(x::Series, s=Inf) = sum(impedance.(x, s))
-impedance(x::Parallel, s=Inf) = invsum(impedance.(x, s))
+impedance(x::Resistor, s=0) = x.R
+impedance(x::Capacitor, s=0) = 1/(s*x.C)
+impedance(x::Inductor, s=0) = s*x.L
+impedance(x::Short, s=0) = 0
+impedance(x::Open, s=0) = Inf
+impedance(x::Series, s=0) = sum(impedance.(x, s))
+impedance(x::Parallel, s=0) = invsum(impedance.(x, s))
 
-voltage(x::Battery, s=Inf) = x.U
-voltage(x::VSource, s=Inf) = x.U
-voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
+voltage(x::Battery, s=0) = x.U
+voltage(x::VSource, s=0) = x.U
+voltage(x::SinusSource, s=0) = x.U*x.ω/(s^2+ω^2)
 # Parameters of components }}}
 
 # Voltage and current division {{{
-voltageDivision(::Impedor, s=Inf) = 1
-voltageDivision(c::Parallel, s=Inf) = map(x->voltageDivision(x,s),c)
-voltageDivision(c::Series, s=Inf) = voltageDivision.(c,s) .* impedance.(c,s) ./ sum(x->impedance(x,s),c)
-voltageDivision(c::VoltageSource, s=Inf) = 0 # Or the other way around
-voltageDivision(c::CurrentSource, s=Inf) = Inf # Or the other way around
+"""
+```julia
+voltageDivision(component, s=0)
+```
+If a total voltage ``U`` is applied over `component`, the voltage over
+respective sub-component is ``k·U``, where ``k`` is the coefficient returned at
+its index from this function.
 
-currentDivision(::Impedor, s=Inf) = 1
-currentDivision(c::Parallel, s=Inf) = ( currentDivision.(c,s) ./  impedance.(c,s) ) .* invsum(x->impedance(x,s),c)
-currentDivision(c::Series, s=inf) = map(x->currentDivision(x,s),c)
-currentDivision(c::VoltageSource, s=Inf) = Inf # Or the other way around
-currentDivision(c::CurrentSource, s=Inf) = 0 # Or the other way around
+`s` can be given and is the laplace variable of investigation (``≈ iω``).
+"""
+function voltageDivision end
+voltageDivision(::Impedor, s=0) = 1
+voltageDivision(::Short, s=0) = 0
+voltageDivision(::Open, s=0) = 1
+voltageDivision(c::Parallel, s=0) = map(x->voltageDivision(x,s),c)
+voltageDivision(c::Series, s=0) = voltageDivision.(c,s) .* impedance.(c,s) ./ sum(x->impedance(x,s),c)
+voltageDivision(::VoltageSource, s=0) = 0 # Or the other way around
+voltageDivision(::CurrentSource, s=0) = Inf # Or the other way around
+
+"""
+```julia
+currentDivision(component, s=0)
+```
+If a total current ``I`` is applied through `component`, the current through
+respective sub-component is ``k·I``, where ``k`` is the coefficient return at
+its index from this function.
+
+`s` can be given and is the laplace variable of investigation (``≈ iω``).
+"""
+function currentDivision end
+currentDivision(::Impedor, s=0) = 1
+currentDivision(::Short, s=0) = 1
+currentDivision(::Open, s=0) = 0
+currentDivision(c::Parallel, s=0) = ( currentDivision.(c,s) ./  impedance.(c,s) ) .* invsum(x->impedance(x,s),c)
+currentDivision(c::Series, s=0) = map(x->currentDivision(x,s),c)
+currentDivision(c::VoltageSource, s=0) = Inf # Or the other way around
+currentDivision(c::CurrentSource, s=0) = 0 # Or the other way around
 # Voltage and current division }}}
 
 
