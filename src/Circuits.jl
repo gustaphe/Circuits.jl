@@ -254,18 +254,9 @@ end
 @component  Source      Battery     battery         U
 @component  Source      VSource     battery1        U
 @component  Source      SinusSource vsourcesin      U ω
-
-
-impedance(x::Resistor, s=Inf) = x.R
-impedance(x::Capacitor, s=Inf) = s*x.C
-impedance(x::Inductor, s=Inf) = 1/(s*x.L)
-impedance(x::Short, s=Inf) = 0
-impedance(x::Open, s=Inf) = Inf
-
-voltage(x::Battery, s=Inf) = x.U
-voltage(x::VSource, s=Inf) = x.U
-voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
 # }}}=#
+
+
 
 # Series {{{
 struct Series <: Impedor
@@ -292,7 +283,7 @@ Series(x,y::Series) = Series([x,y.l...])
 Series(x::Series,y...) = Series([x.l...,y...])
 
 Series(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(sum(getproperty.(x,:R)))
-Series(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(inv(sum(inv.(getproperty.(x,:C)))))
+Series(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(invsum(getproperty.(x,:C)))
 Series(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(sum(getproperty.(x,:L)))
 Series(x::Vector{Short}) = Short()
 Series(x::Vector{Open}) = Open()
@@ -323,9 +314,9 @@ end
 Parallel(x::Vararg{<:Impedor}) = Parallel(collect(x))
 Parallel(x::Parallel,y...) = Parallel([x.l...,y...])
 
-Parallel(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(inv(sum(inv.(getproperty.(x,:R)))))
+Parallel(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(invsum(getproperty.(x,:R)))
 Parallel(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(sum(getproperty.(x,:C)))
-Parallel(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(inv(sum(inv.(getproperty.(x,:L)))))
+Parallel(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(invsum(getproperty.(x,:L)))
 Parallel(x::Vector{Short}) = Short()
 Parallel(x::Vector{Open}) = Open()
 
@@ -333,5 +324,23 @@ show(io::IO, ::MIME"text/plain", x::Parallel) = join(io,x.l," || ")
 
 show(io::IO, ::MIME"text/circuitikz", x::Parallel) = print(io,"generic={||}")
 # Parallel }}}
+
+# Parameters of components {{{
+impedance(x::Resistor, s=Inf) = x.R
+impedance(x::Capacitor, s=Inf) = s*x.C
+impedance(x::Inductor, s=Inf) = 1/(s*x.L)
+impedance(x::Short, s=Inf) = 0
+impedance(x::Open, s=Inf) = Inf
+impedance(x::Series, s=Inf) = sum(impedance.(x.l, s))
+impedance(x::Parallel, s=Inf) = invsum(impedance.(x.l, s))
+
+voltage(x::Battery, s=Inf) = x.U
+voltage(x::VSource, s=Inf) = x.U
+voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
+# Parameters of components }}}
+
+# Auxiliary functions {{{
+invsum(x...) = inv(sum(inv.(x)))
+# Auxiliary functions }}}
 
 end
