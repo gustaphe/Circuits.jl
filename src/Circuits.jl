@@ -6,7 +6,7 @@ export Resistor, Inductor, Capacitor, Short, Open
 export Series, Parallel
 export Battery, VSource, SinusSource
 
-import Base.show
+import Base.show, Base.iterate
 
 CircuitIndex = Union{Int64,Symbol}
 
@@ -263,11 +263,12 @@ struct Series <: Impedor
     l::Vector{<:Impedor}
 
     function Series(l::Vector{<:Impedor})
-        types = filter(x->x!==Short,unique(typeof.(l)))
-        if any(types.===Open)
+        types = filter(x -> !<:(x, Union{Short,Parallel}), unique(typeof.(l)))
+        if any(types .<: Open)
             return Open()
         end
         l2 = Impedor[]
+        append!(l2,filter(x->isa(x,Parallel),l))
         for T in types
             push!(l2,Series(T[filter(x->isa(x,T),l)...]))
         end
@@ -280,7 +281,7 @@ Series(x::Vararg{<:Impedor}) = Series(collect(x))
 # This is not great, would probably be better to extract l before y is
 # constructed
 Series(x,y::Series) = Series([x,y.l...])
-Series(x::Series,y...) = Series([x.l...,y...])
+Series(x::Series,y...) = Series([x...,y...])
 
 Series(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(sum(getproperty.(x,:R)))
 Series(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(invsum(getproperty.(x,:C)))
@@ -288,9 +289,14 @@ Series(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(sum(getproperty.(x,:
 Series(x::Vector{Short}) = Short()
 Series(x::Vector{Open}) = Open()
 
-show(io::IO, ::MIME"text/plain", x::Series) = join(io,x.l," --> ")
-
+show(io::IO, ::MIME"text/plain", x::Series) = join(io,x," --> ")
 show(io::IO, ::MIME"text/circuitikz", x::Series) = print(io,"generic={--}")
+
+iterate(x::Series,state...) = iterate(x.l,state...)
+Base.IteratorEltype(::Series) = Base.HasEltype()
+eltype(x::Series) = eltype(x.l)
+Base.IteratorSize(::Series) = Base.HasLength()
+length(x::Series) = length(x.l)
 
 # Series }}}
 
@@ -299,20 +305,24 @@ struct Parallel <: Impedor
     l::Vector{Impedor}
 
     function Parallel(l::Vector{Impedor})
-        types = filter(x->x!==Open,unique(typeof.(l)))
-        if any(types.===Short)
+        types = filter(x -> !<:(x, Union{Open,Series}),unique(typeof.(l)))
+        if any(types .<: Short)
             return Short()
         end
         l2 = Impedor[]
+        append!(l2,filter(x->isa(x,Series),l))
         for T in types
             push!(l2,Parallel(T[filter(x->isa(x,T),l)...]))
         end
         new(l2)
     end
+    function Parallel(l::Vector{Series})
+        new(l)
+    end
 end
 
 Parallel(x::Vararg{<:Impedor}) = Parallel(collect(x))
-Parallel(x::Parallel,y...) = Parallel([x.l...,y...])
+Parallel(x::Parallel,y...) = Parallel([x...,y...])
 
 Parallel(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(invsum(getproperty.(x,:R)))
 Parallel(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(sum(getproperty.(x,:C)))
@@ -320,27 +330,41 @@ Parallel(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(invsum(getproperty
 Parallel(x::Vector{Short}) = Short()
 Parallel(x::Vector{Open}) = Open()
 
-show(io::IO, ::MIME"text/plain", x::Parallel) = join(io,x.l," || ")
-
+show(io::IO, ::MIME"text/plain", x::Parallel) = join(io,x," || ")
 show(io::IO, ::MIME"text/circuitikz", x::Parallel) = print(io,"generic={||}")
+
+iterate(x::Parallel,state...) = iterate(x.l,state...)
+Base.IteratorEltype(::Parallel) = Base.HasEltype()
+eltype(x::Parallel) = eltype(x.l)
+Base.IteratorSize(::Parallel) = Base.HasLength()
+length(x::Parallel) = length(x.l)
+
 # Parallel }}}
 
 # Parameters of components {{{
 impedance(x::Resistor, s=Inf) = x.R
-impedance(x::Capacitor, s=Inf) = s*x.C
-impedance(x::Inductor, s=Inf) = 1/(s*x.L)
+impedance(x::Capacitor, s=Inf) = 1/(s*x.C)
+impedance(x::Inductor, s=Inf) = s*x.L
 impedance(x::Short, s=Inf) = 0
 impedance(x::Open, s=Inf) = Inf
-impedance(x::Series, s=Inf) = sum(impedance.(x.l, s))
-impedance(x::Parallel, s=Inf) = invsum(impedance.(x.l, s))
+impedance(x::Series, s=Inf) = sum(impedance.(x, s))
+impedance(x::Parallel, s=Inf) = invsum(impedance.(x, s))
 
 voltage(x::Battery, s=Inf) = x.U
 voltage(x::VSource, s=Inf) = x.U
 voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
 # Parameters of components }}}
 
+# Voltage division {{{
+voltageDivision(::Impedor) = 1//1
+voltageDivision(c::Parallel) = map(voltageDivision,p.l)
+# Voltage division }}}
+
+
+
+
 # Auxiliary functions {{{
-invsum(x...) = inv(sum(inv.(x)))
+invsum(x) = inv(sum(inv,x))
 # Auxiliary functions }}}
 
 end
