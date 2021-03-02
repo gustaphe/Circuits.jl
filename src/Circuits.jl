@@ -6,7 +6,7 @@ export Resistor, Inductor, Capacitor, Short, Open
 export Series, Parallel
 export Battery, VSource, SinusSource
 
-export voltageDivision, currentDivision
+export voltageDivision, currentDivision, simplify
 
 import Base.show, Base.iterate, Base.length
 
@@ -261,87 +261,65 @@ end
 # Series {{{
 struct Series <: Impedor
     l::Vector{<:Impedor}
-
-    function Series(l::Vector{<:Impedor})
-        types = filter(x -> !<:(x, Union{Short,Parallel}), unique(typeof.(l)))
-        if any(types .<: Open)
-            return Open()
-        end
-        l2 = Impedor[]
-        append!(l2,filter(x->isa(x,Parallel),l))
-        for T in types
-            push!(l2,Series(T[filter(x->isa(x,T),l)...]))
-        end
-        new(l2)
-    end
 end
 
-Series(x::Vararg{<:Impedor}) = Series(collect(x))
+# Constructor {{{
+function Series(args::Vararg{<:Impedor})
+    l = Impedor[]
+    for x in args
+        # Make sure a Series doesn't contain Series objects (because that would be very silly)
+        unwind!(l,Series,x)
+    end
+    Series(l)
+end
+# Constructor }}}
 
-# This is not great, would probably be better to extract l before y is
-# constructed
-Series(x,y::Series) = Series([x,y.l...])
-Series(x::Series,y...) = Series([x...,y...])
-
-Series(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(sum(getproperty.(x,:R)))
-Series(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(invsum(getproperty.(x,:C)))
-Series(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(sum(getproperty.(x,:L)))
-Series(x::Vector{Short}) = Short()
-Series(x::Vector{Open}) = Open()
-
+# Show {{{
 show(io::IO, x::Series) = join(io,x," --> ")
 show(io::IO, ::MIME"text/circuitikz", x::Series) = print(io,"generic={--}")
+# Show }}}
 
+# Iteration {{{
 iterate(x::Series,state...) = iterate(x.l,state...)
 Base.IteratorEltype(::Series) = Base.HasEltype()
 eltype(x::Series) = eltype(x.l)
 Base.IteratorSize(::Series) = Base.HasLength()
 length(x::Series) = length(x.l)
+# Iteration }}}
 
 # Series }}}
 
 # Parallel {{{
 struct Parallel <: Impedor
-    l::Vector{Impedor}
-
-    function Parallel(l::Vector{Impedor})
-        types = filter(x -> !<:(x, Union{Open,Series}),unique(typeof.(l)))
-        if any(types .<: Short)
-            return Short()
-        end
-        l2 = Impedor[]
-        append!(l2,filter(x->isa(x,Series),l))
-        for T in types
-            push!(l2,Parallel(T[filter(x->isa(x,T),l)...]))
-        end
-        new(l2)
-    end
-    function Parallel(l::Vector{Series})
-        new(l)
-    end
+    l::Vector{<:Impedor}
 end
 
-Parallel(x::Vararg{<:Impedor}) = Parallel(collect(x))
-Parallel(x::Parallel,y...) = Parallel([x...,y...])
+# Constructor {{{
+function Parallel(args::Vararg{<:Impedor})
+    l = Impedor[]
+    for x in args
+        unwind!(l,Parallel,x)
+    end
+    Parallel(l)
+end
+# Constructor }}}
 
-Parallel(x::Vector{Resistor{T}}) where {T<:Number} = Resistor(invsum(getproperty.(x,:R)))
-Parallel(x::Vector{Capacitor{T}}) where {T<:Number} = Capacitor(sum(getproperty.(x,:C)))
-Parallel(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(invsum(getproperty.(x,:L)))
-Parallel(x::Vector{Short}) = Short()
-Parallel(x::Vector{Open}) = Open()
-
+# Show {{{
 function show(io::IO, x::Parallel)
     print(io,'(')
     join(io,x,") || (")
     print(io,')')
 end
 show(io::IO, ::MIME"text/circuitikz", x::Parallel) = print(io,"generic={||}")
+# Show }}}
 
+# Iteration {{{
 iterate(x::Parallel,state...) = iterate(x.l,state...)
 Base.IteratorEltype(::Parallel) = Base.HasEltype()
 eltype(x::Parallel) = eltype(x.l)
 Base.IteratorSize(::Parallel) = Base.HasLength()
 length(x::Parallel) = length(x.l)
+# Iteration }}}
 
 # Parallel }}}
 
@@ -399,10 +377,40 @@ currentDivision(c::VoltageSource, s=0) = Inf # Or the other way around
 currentDivision(c::CurrentSource, s=0) = 0 # Or the other way around
 # Voltage and current division }}}
 
+# Simplify {{{
+function simplify(x::S, Greedy::Type, Shy::Type) where S
+    types = unique(typeof.(x.l))
+    any(types .<: Greedy) && return Greedy()
+    all(types .<: Shy) && return Shy()
+    l = Impedor[]
+    for T in filter(t->!<:(t,Shy),types)
+        append!(l,simplify(T[filter(t->isa(t,T),x.l)...],S))
+    end
+    return S(l)
+end
+
+simplify(x::Series,extra=nothing) = simplify(x,Open,Short)
+simplify(x::Parallel,extra=nothing) = simplify(x,Short,Open)
+
+simplify(x::Vector{<:Resistor},::Type{Parallel}) = [Resistor(invsum(getproperty.(x,:R))),]
+simplify(x::Vector{<:Resistor},::Type{Series}) = [Resistor(sum(getproperty.(x,:R))),]
+simplify(x::Vector{<:Capacitor},::Type{Parallel}) = [Capacitor(sum(getproperty.(x,:C))),]
+simplify(x::Vector{<:Capacitor},::Type{Series}) = [Capacitor(invsum(getproperty.(x,:C))),]
+simplify(x::Vector{<:Inductor},::Type{Parallel}) = [Inductor(invsum(getproperty.(x,:L))),]
+simplify(x::Vector{<:Inductor},::Type{Series}) = [Inductor(sum(getproperty.(x,:L))),]
+simplify(x::Vector{<:Series},::Type{Parallel}) = simplify.(x)
+simplify(x::Vector{<:Parallel},::Type{Series}) = simplify.(x)
+simplify(x::Vector{<:Short},::Type) = nothing
+simplify(x::Vector{<:Open},::Type) = nothing
+# Simplify }}}
+
 
 # Auxiliary functions {{{
 invsum(x) = inv(sum(inv,x))
 invsum(f,x) = inv(sum(t->inv(f(t)), x))
+
+unwind!(l::Vector{Impedor},::Type{T},x::Impedor) where T = push!(l,x)
+unwind!(l::Vector{Impedor},::Type{T},x::T) where T = unwind!(l,x)
 # Auxiliary functions }}}
 
 end
