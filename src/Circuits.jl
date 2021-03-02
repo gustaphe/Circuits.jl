@@ -6,13 +6,17 @@ export Resistor, Inductor, Capacitor, Short, Open
 export Series, Parallel
 export Battery, VSource, SinusSource
 
-import Base.show, Base.iterate
+export voltageDivision, currentDivision
+
+import Base.show, Base.iterate, Base.length
 
 CircuitIndex = Union{Int64,Symbol}
 
 abstract type AbstractComponent end
 abstract type Impedor <: AbstractComponent end
 abstract type Source <: AbstractComponent end
+abstract type VoltageSource <: Source end
+abstract type CurrentSource <: Source end
 
 # Circuit {{{
 struct Circuit # Could be considered a graph?
@@ -242,16 +246,16 @@ end
 # Component macro }}}
 
 ##= Generate components {{{
-#           type        name        circuitikzname  parameters
-@component  Impedor     Resistor    R               R
-@component  Impedor     Capacitor   C               C
-@component  Impedor     Inductor    L               L
-@component  Impedor     Short       short
-@component  Impedor     Open        open
+#           type                name        circuitikzname  parameters
+@component  Impedor             Resistor    R               R
+@component  Impedor             Capacitor   C               C
+@component  Impedor             Inductor    L               L
+@component  Impedor             Short       short
+@component  Impedor             Open        open
 
-@component  Source      Battery     battery         U
-@component  Source      VSource     battery1        U
-@component  Source      SinusSource vsourcesin      U ω
+@component  VoltageSource      Battery     battery         U
+@component  VoltageSource      VSource     battery1        U
+@component  VoltageSource      SinusSource vsourcesin      U ω
 # }}}=#
 
 # Series {{{
@@ -355,14 +359,24 @@ voltage(x::VSource, s=Inf) = x.U
 voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
 # Parameters of components }}}
 
-# Voltage division {{{
-voltageDivision(::Impedor) = 1//1
-voltageDivision(c::Parallel) = map(voltageDivision,p.l)
-# Voltage division }}}
+# Voltage and current division {{{
+voltageDivision(::Impedor, s=Inf) = 1
+voltageDivision(c::Parallel, s=Inf) = map(x->voltageDivision(x,s),c)
+voltageDivision(c::Series, s=Inf) = voltageDivision.(c,s) .* impedance.(c,s) ./ sum(x->impedance(x,s),c)
+voltageDivision(c::VoltageSource, s=Inf) = 0 # Or the other way around
+voltageDivision(c::CurrentSource, s=Inf) = Inf # Or the other way around
+
+currentDivision(::Impedor, s=Inf) = 1
+currentDivision(c::Parallel, s=Inf) = ( currentDivision.(c,s) ./  impedance.(c,s) ) .* invsum(x->impedance(x,s),c)
+currentDivision(c::Series, s=inf) = map(x->currentDivision(x,s),c)
+currentDivision(c::VoltageSource, s=Inf) = Inf # Or the other way around
+currentDivision(c::CurrentSource, s=Inf) = 0 # Or the other way around
+# Voltage and current division }}}
 
 
 # Auxiliary functions {{{
 invsum(x) = inv(sum(inv,x))
+invsum(f,x) = inv(sum(t->inv(f(t)), x))
 # Auxiliary functions }}}
 
 end
