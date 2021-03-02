@@ -197,17 +197,15 @@ function component_helper(type,name,circuitikzname,parameters...)
     showexpr = Expr(
                     :function,
                     Expr(:call, :show,
-                         :(io::IO), :(m::MIME"text/plain"),
+                         :(io::IO),
                          Expr(:(::),:x,name),
                         ),
                     Expr(:block,
                          Expr(:call,:print,:io,string(name)),
-                         isempty(parameters) ? nothing : Expr(:block,
-                                                              :(print(io,'(')),
-                                                                Expr.(:call,:show,:io,
-                                                                      :m,Expr.(:.,:x,QuoteNode.(parameters))
-                                                                     )...,
-                                                                :(print(io,')')),
+                         isempty(parameters) ? nothing : Expr(:call,:print,
+                                                              :io, '(',
+                                                                     Expr.(:.,:x,QuoteNode.(parameters))...,
+                                                                     ')',
                                                              )
                         )
                    )
@@ -256,8 +254,6 @@ end
 @component  Source      SinusSource vsourcesin      U ω
 # }}}=#
 
-
-
 # Series {{{
 struct Series <: Impedor
     l::Vector{<:Impedor}
@@ -289,7 +285,7 @@ Series(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(sum(getproperty.(x,:
 Series(x::Vector{Short}) = Short()
 Series(x::Vector{Open}) = Open()
 
-show(io::IO, ::MIME"text/plain", x::Series) = join(io,x," --> ")
+show(io::IO, x::Series) = join(io,x," --> ")
 show(io::IO, ::MIME"text/circuitikz", x::Series) = print(io,"generic={--}")
 
 iterate(x::Series,state...) = iterate(x.l,state...)
@@ -330,7 +326,11 @@ Parallel(x::Vector{Inductor{T}}) where {T<:Number} = Inductor(invsum(getproperty
 Parallel(x::Vector{Short}) = Short()
 Parallel(x::Vector{Open}) = Open()
 
-show(io::IO, ::MIME"text/plain", x::Parallel) = join(io,x," || ")
+function show(io::IO, x::Parallel)
+    print(io,'(')
+    join(io,x,") || (")
+    print(io,')')
+end
 show(io::IO, ::MIME"text/circuitikz", x::Parallel) = print(io,"generic={||}")
 
 iterate(x::Parallel,state...) = iterate(x.l,state...)
@@ -359,8 +359,6 @@ voltage(x::SinusSource, s=Inf) = x.U*x.ω/(s^2+ω^2)
 voltageDivision(::Impedor) = 1//1
 voltageDivision(c::Parallel) = map(voltageDivision,p.l)
 # Voltage division }}}
-
-
 
 
 # Auxiliary functions {{{
