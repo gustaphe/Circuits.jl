@@ -14,6 +14,7 @@ CircuitIndex = Union{Int64,Symbol}
 
 abstract type AbstractComponent end
 abstract type Impedor <: AbstractComponent end
+abstract type Network <: Impedor end
 abstract type Source <: AbstractComponent end
 abstract type VoltageSource <: Source end
 abstract type CurrentSource <: Source end
@@ -259,7 +260,7 @@ end
 # }}}=#
 
 # Series {{{
-struct Series <: Impedor
+struct Series <: Network
     l::Vector{<:Impedor}
 end
 
@@ -290,7 +291,7 @@ length(x::Series) = length(x.l)
 # Series }}}
 
 # Parallel {{{
-struct Parallel <: Impedor
+struct Parallel <: Network
     l::Vector{<:Impedor}
 end
 
