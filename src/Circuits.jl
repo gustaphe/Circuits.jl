@@ -356,7 +356,7 @@ voltageDivision(::Open, s=0) = 1
 voltageDivision(c::Parallel, s=0) = map(x->voltageDivision(x,s),c)
 voltageDivision(c::Series, s=0) = voltageDivision.(c,s) .* impedance.(c,s) ./ sum(x->impedance(x,s),c)
 voltageDivision(::VoltageSource, s=0) = 0 # Or the other way around
-voltageDivision(::CurrentSource, s=0) = Inf # Or the other way around
+voltageDivision(::CurrentSource, s=0) = 1 # Or the other way around
 
 """
 ```julia
@@ -374,7 +374,7 @@ currentDivision(::Short, s=0) = 1
 currentDivision(::Open, s=0) = 0
 currentDivision(c::Parallel, s=0) = ( currentDivision.(c,s) ./  impedance.(c,s) ) .* invsum(x->impedance(x,s),c)
 currentDivision(c::Series, s=0) = map(x->currentDivision(x,s),c)
-currentDivision(c::VoltageSource, s=0) = Inf # Or the other way around
+currentDivision(c::VoltageSource, s=0) = 1 # Or the other way around
 currentDivision(c::CurrentSource, s=0) = 0 # Or the other way around
 # Voltage and current division }}}
 
@@ -405,6 +405,19 @@ simplify(x::Vector{<:Short},::Type) = nothing
 simplify(x::Vector{<:Open},::Type) = nothing
 # Simplify }}}
 
+# Extract network {{{
+"""
+```julia
+Network(c::Circuit, a, b)
+```
+Using nodes `a` and `b` as terminals, traverse the circuit `c` and return a
+`Series`,`Parallel` or simply a component that connects them.
+
+This is going to be recursive as all hell.
+"""
+function Network(c::Circuit,a::CircuitIndex,b::CircuitIndex)
+end
+# Extract network }}}
 
 # Auxiliary functions {{{
 invsum(x) = inv(sum(inv,x))
