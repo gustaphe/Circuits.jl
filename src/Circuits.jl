@@ -10,7 +10,7 @@ export voltageDivision, currentDivision, simplify
 
 import Base.show, Base.iterate, Base.length
 
-CircuitIndex = Union{Int64,Symbol}
+CircuitIndex = Union{Int64, Symbol}
 
 abstract type AbstractComponent end
 abstract type Impedor <: AbstractComponent end
@@ -20,36 +20,33 @@ abstract type VoltageSource <: Source end
 abstract type CurrentSource <: Source end
 
 # Circuit {{{
-struct Circuit # Could be considered a graph?
-    coordinates::Dict#{CircuitIndex,Tuple{Float64,Float64}}
-    connections::Dict#{Tuple{CircuitIndex,CircuitIndex},<:AbstractComponent}
-end
+struct Circuit # {{{
+    coordinates::Dict#{CircuitIndex, Tuple{Float64, Float64}}
+    connections::Dict#{Tuple{CircuitIndex, CircuitIndex}, <:AbstractComponent}
+end # }}}
 
-
-function show(io::IO, m::MIME"text/plain", x::Circuit)
-    print(io,"Circuit with ",
-          length(x.coordinates)," nodes, ",
-          count(isa.(values(x.connections), Impedor))," impedors and ",
-          count(isa.(values(x.connections), Source))," sources.",
+function show(io::IO, m::MIME"text/plain", x::Circuit) # {{{
+    print(io, "Circuit with ",
+          length(x.coordinates), " nodes, ",
+          count(isa.(values(x.connections), Impedor)), " impedors and ",
+          count(isa.(values(x.connections), Source)), " sources.",
          )
-end
+end # }}}
 
-function show(io::IO, m::MIME"text/circuitikz", x::Circuit; shownodes=false)
-    print(io,"\\draw %\n")
-    for (k,v) in x.connections
-        print(io,"\t(",join(x.coordinates[k[1]],','),") to[")
-        show(io, m, v)
-        print(io,"] (",join(x.coordinates[k[2]],','),") %\n")
+function show(io::IO, m::MIME"text/circuitikz", x::Circuit; shownodes=false, expandnetworks=false) # {{{
+    print(io, "\\draw %\n")
+    for (k, v) in x.connections
+        printconnection(io, x.coordinates[k[1]], x.coordinates[k[2]], v; expandnetworks)
     end
-    print(io,"\t;")
+    print(io, "\t; ")
     if shownodes
-        print(io, "\\path[red, every node/.style={circle,draw=red,fill=white}]")
-        for (i,c) in x.coordinates
-            print(io, " (",join(c,','),") node {",i,"}")
+        print(io, "\\path[red, every node/.style={circle, draw=red, fill=white}]")
+        for (i, c) in x.coordinates
+            print(io, " (", join(c, ','), ") node {", i, "}")
         end
-        print(io, ";\n")
+        print(io, "; \n")
     end
-end
+end # }}}
 # }}}
 
 # Circuit macro {{{
@@ -58,12 +55,12 @@ end
 <coordinate> <component> <coordinate> <component>...
 ```
 
-Label coordinates by `name:(x,y)` to reuse later with `:name`.
+Label coordinates by `name:(x, y)` to reuse later with `:name`.
 
 ```julia
 @circuit begin
-a:(0,0) --> R(10) --> b:(1,0) --> C(4) --> (2,0)
-:b --> R(10) --> c:(1,1)
+a:(0, 0) --> R(10) --> b:(1, 0) --> C(4) --> (2, 0)
+:b --> R(10) --> c:(1, 1)
 end
 ```
 """
@@ -74,11 +71,11 @@ end
 
 function generate_circuit(arg::Expr)
     if arg.head !== :block
-        expressions = (arg,)
+        expressions = (arg, )
     else
         expressions = arg.args
     end
-    coordinates = Dict{CircuitIndex,Union{Expr,Symbol}}()
+    coordinates = Dict{CircuitIndex, Union{Expr, Symbol}}()
     components = Expr[]
 
     for e in expressions
@@ -88,7 +85,7 @@ function generate_circuit(arg::Expr)
                 :Circuit,
                 Expr(:call, :Dict,
                      Expr.(:call, :(=>),
-                           QuoteNode.(keys(coordinates)),values(coordinates)
+                           QuoteNode.(keys(coordinates)), values(coordinates)
                           )...
                     ),
                 Expr(:call, :Dict,
@@ -115,33 +112,33 @@ function push_stuff!(e::Expr, coord, comp)
     if head === :-->
         left = push_stuff!(args[1], coord, comp)
         right = push_stuff!(args[2], coord, comp)
-        if isa(left,CircuitIndex) && isa(right,CircuitIndex)
+        if isa(left, CircuitIndex) && isa(right, CircuitIndex)
             # coordinate --> coordinate
-            push!(comp,:(($(QuoteNode(left)), $(QuoteNode(right))) => Short()))
+            push!(comp, :(($(QuoteNode(left)), $(QuoteNode(right))) => Short()))
             return left
         end
         if left isa CircuitIndex
             # coordinate --> component
-            push!(comp,:(($(QuoteNode(left)), $(QuoteNode(right.index))) => $(right.component)))
+            push!(comp, :(($(QuoteNode(left)), $(QuoteNode(right.index))) => $(right.component)))
             return left
         end
         if right isa CircuitIndex
             # component --> coordinate
             # should be a (component, index) tuple...
-            return (component=left,index=right)
+            return (component=left, index=right)
         end
         # component --> component
-        return (component=:(Series($left,$(right.component))), index=right.index)
+        return (component=:(Series($left, $(right.component))), index=right.index)
     end
     if head === :||
         # component || component
         left = push_stuff!(args[1], coord, comp)
         right = push_stuff!(args[2], coord, comp)
-        return (component=:(Parallel($left,$right)), index=right.index)
+        return :(Parallel($left, $right))
     end
     if head === :call
         if args[1] === :(:)
-            # Label coordinate arg[2]:arg[3] ( a:(1,2) )
+            # Label coordinate arg[2]:arg[3] ( a:(1, 2) )
             push!(coord, args[2] => args[3])
             return args[2]
         end
@@ -159,14 +156,14 @@ function push_stuff!(e::Expr, coord, comp)
 end
 
 function push_stuff!(e::QuoteNode, coord, comp)
-    if !haskey(coord,e.value)
+    if !haskey(coord, e.value)
         error("Coordinate $(e.value) doesn't exist")
     end
     return e.value
 end
 
 function push_stuff!(e::Symbol, coord, comp)
-    if !haskey(coord,e)
+    if !haskey(coord, e)
         error("Coordinate $e doesn't exist")
     end
     return e
@@ -181,7 +178,7 @@ macro component(args...)
     esc(component_helper(args...))
 end
 
-function component_helper(type,name,circuitikzname,parameters...)
+function component_helper(type, name, circuitikzname, parameters...)
 
     #  Struct generation {{{
     structexpr = Expr(
@@ -194,7 +191,7 @@ function component_helper(type,name,circuitikzname,parameters...)
                                                       ),
                                            type
                                           ),
-                      Expr(:block, Expr.(:(::),parameters,:T)...)
+                      Expr(:block, Expr.(:(::), parameters, :T)...)
                      )
     #  }}}
 
@@ -203,13 +200,13 @@ function component_helper(type,name,circuitikzname,parameters...)
                     :function,
                     Expr(:call, :show,
                          :(io::IO),
-                         Expr(:(::),:x,name),
+                         Expr(:(::), :x, name),
                         ),
                     Expr(:block,
-                         Expr(:call,:print,:io,string(name)),
-                         isempty(parameters) ? nothing : Expr(:call,:print,
+                         Expr(:call, :print, :io, string(name)),
+                         isempty(parameters) ? nothing : Expr(:call, :print,
                                                               :io, '(',
-                                                                     Expr.(:.,:x,QuoteNode.(parameters))...,
+                                                                     Expr.(:., :x, QuoteNode.(parameters))...,
                                                                      ')',
                                                              )
                         )
@@ -221,16 +218,16 @@ function component_helper(type,name,circuitikzname,parameters...)
                           :function,
                           Expr(:call, :show,
                                :(io::IO), :(::MIME"text/circuitikz"),
-                               Expr(:(::),:x,name),
+                               Expr(:(::), :x, name),
                               ),
                           Expr(:block,
-                               Expr(:call,:print,:io,string(circuitikzname)),
+                               Expr(:call, :print, :io, string(circuitikzname)),
                                isempty(parameters) ? nothing : Expr(:block,
-                                                                    :(print(io,'=')),
-                                                                    Expr(:call,:print,:io,
+                                                                    :(print(io, '=')),
+                                                                    Expr(:call, :print, :io,
                                                                          Expr(:call,
                                                                               :latexify,
-                                                                              Expr(:.,:x,QuoteNode(first(parameters)))
+                                                                              Expr(:., :x, QuoteNode(first(parameters)))
                                                                              )
                                                                         )
                                                                    )
@@ -269,19 +266,19 @@ function Series(args::Vararg{<:Impedor})
     l = Impedor[]
     for x in args
         # Make sure a Series doesn't contain Series objects (because that would be very silly)
-        unwind!(l,Series,x)
+        unwind!(l, Series, x)
     end
     Series(l)
 end
 # Constructor }}}
 
 # Show {{{
-show(io::IO, x::Series) = join(io,x," --> ")
-show(io::IO, ::MIME"text/circuitikz", x::Series) = print(io,"generic={--}")
+show(io::IO, x::Series) = join(io, x, " --> ")
+show(io::IO, ::MIME"text/circuitikz", x::Series) = print(io, "generic={--}")
 # Show }}}
 
 # Iteration {{{
-iterate(x::Series,state...) = iterate(x.l,state...)
+iterate(x::Series, state...) = iterate(x.l, state...)
 Base.IteratorEltype(::Series) = Base.HasEltype()
 eltype(x::Series) = eltype(x.l)
 Base.IteratorSize(::Series) = Base.HasLength()
@@ -299,7 +296,7 @@ end
 function Parallel(args::Vararg{<:Impedor})
     l = Impedor[]
     for x in args
-        unwind!(l,Parallel,x)
+        unwind!(l, Parallel, x)
     end
     Parallel(l)
 end
@@ -307,15 +304,15 @@ end
 
 # Show {{{
 function show(io::IO, x::Parallel)
-    print(io,'(')
-    join(io,x,") || (")
-    print(io,')')
+    print(io, '(')
+    join(io, x, ") || (")
+    print(io, ')')
 end
-show(io::IO, ::MIME"text/circuitikz", x::Parallel) = print(io,"generic={||}")
+show(io::IO, ::MIME"text/circuitikz", x::Parallel) = print(io, "generic={||}")
 # Show }}}
 
 # Iteration {{{
-iterate(x::Parallel,state...) = iterate(x.l,state...)
+iterate(x::Parallel, state...) = iterate(x.l, state...)
 Base.IteratorEltype(::Parallel) = Base.HasEltype()
 eltype(x::Parallel) = eltype(x.l)
 Base.IteratorSize(::Parallel) = Base.HasLength()
@@ -353,8 +350,8 @@ function voltageDivision end
 voltageDivision(::Impedor, s=0) = 1
 voltageDivision(::Short, s=0) = 0
 voltageDivision(::Open, s=0) = 1
-voltageDivision(c::Parallel, s=0) = map(x->voltageDivision(x,s),c)
-voltageDivision(c::Series, s=0) = voltageDivision.(c,s) .* impedance.(c,s) ./ sum(x->impedance(x,s),c)
+voltageDivision(c::Parallel, s=0) = map(x->voltageDivision(x, s), c)
+voltageDivision(c::Series, s=0) = voltageDivision.(c, s) .* impedance.(c, s) ./ sum(x->impedance(x, s), c)
 voltageDivision(::VoltageSource, s=0) = 0 # Or the other way around
 voltageDivision(::CurrentSource, s=0) = 1 # Or the other way around
 
@@ -372,8 +369,8 @@ function currentDivision end
 currentDivision(::Impedor, s=0) = 1
 currentDivision(::Short, s=0) = 1
 currentDivision(::Open, s=0) = 0
-currentDivision(c::Parallel, s=0) = ( currentDivision.(c,s) ./  impedance.(c,s) ) .* invsum(x->impedance(x,s),c)
-currentDivision(c::Series, s=0) = map(x->currentDivision(x,s),c)
+currentDivision(c::Parallel, s=0) = ( currentDivision.(c, s) ./  impedance.(c, s) ) .* invsum(x->impedance(x, s), c)
+currentDivision(c::Series, s=0) = map(x->currentDivision(x, s), c)
 currentDivision(c::VoltageSource, s=0) = 1 # Or the other way around
 currentDivision(c::CurrentSource, s=0) = 0 # Or the other way around
 # Voltage and current division }}}
@@ -384,25 +381,25 @@ function simplify(x::S, Greedy::Type, Shy::Type) where S
     any(types .<: Greedy) && return Greedy()
     all(types .<: Shy) && return Shy()
     l = Impedor[]
-    for T in filter(t->!<:(t,Shy),types)
-        append!(l,simplify(T[filter(t->isa(t,T),x.l)...],S))
+    for T in filter(t->!<:(t, Shy), types)
+        append!(l, simplify(T[filter(t->isa(t, T), x.l)...], S))
     end
     return S(l)
 end
 
-simplify(x::Series,extra=nothing) = simplify(x,Open,Short)
-simplify(x::Parallel,extra=nothing) = simplify(x,Short,Open)
+simplify(x::Series, extra=nothing) = simplify(x, Open, Short)
+simplify(x::Parallel, extra=nothing) = simplify(x, Short, Open)
 
-simplify(x::Vector{<:Resistor},::Type{Parallel}) = [Resistor(invsum(getproperty.(x,:R))),]
-simplify(x::Vector{<:Resistor},::Type{Series}) = [Resistor(sum(getproperty.(x,:R))),]
-simplify(x::Vector{<:Capacitor},::Type{Parallel}) = [Capacitor(sum(getproperty.(x,:C))),]
-simplify(x::Vector{<:Capacitor},::Type{Series}) = [Capacitor(invsum(getproperty.(x,:C))),]
-simplify(x::Vector{<:Inductor},::Type{Parallel}) = [Inductor(invsum(getproperty.(x,:L))),]
-simplify(x::Vector{<:Inductor},::Type{Series}) = [Inductor(sum(getproperty.(x,:L))),]
-simplify(x::Vector{<:Series},::Type{Parallel}) = simplify.(x)
-simplify(x::Vector{<:Parallel},::Type{Series}) = simplify.(x)
-simplify(x::Vector{<:Short},::Type) = nothing
-simplify(x::Vector{<:Open},::Type) = nothing
+simplify(x::Vector{<:Resistor}, ::Type{Parallel}) = [Resistor(invsum(getproperty.(x, :R))), ]
+simplify(x::Vector{<:Resistor}, ::Type{Series}) = [Resistor(sum(getproperty.(x, :R))), ]
+simplify(x::Vector{<:Capacitor}, ::Type{Parallel}) = [Capacitor(sum(getproperty.(x, :C))), ]
+simplify(x::Vector{<:Capacitor}, ::Type{Series}) = [Capacitor(invsum(getproperty.(x, :C))), ]
+simplify(x::Vector{<:Inductor}, ::Type{Parallel}) = [Inductor(invsum(getproperty.(x, :L))), ]
+simplify(x::Vector{<:Inductor}, ::Type{Series}) = [Inductor(sum(getproperty.(x, :L))), ]
+simplify(x::Vector{<:Series}, ::Type{Parallel}) = simplify.(x)
+simplify(x::Vector{<:Parallel}, ::Type{Series}) = simplify.(x)
+simplify(x::Vector{<:Short}, ::Type) = nothing
+simplify(x::Vector{<:Open}, ::Type) = nothing
 # Simplify }}}
 
 # Extract network {{{
@@ -411,20 +408,71 @@ simplify(x::Vector{<:Open},::Type) = nothing
 Network(c::Circuit, a, b)
 ```
 Using nodes `a` and `b` as terminals, traverse the circuit `c` and return a
-`Series`,`Parallel` or simply a component that connects them.
+`Series`, `Parallel` or simply a component that connects them.
 
 This is going to be recursive as all hell.
 """
-function Network(c::Circuit,a::CircuitIndex,b::CircuitIndex)
+function Network(c::Circuit, a::CircuitIndex, b::CircuitIndex)
 end
 # Extract network }}}
 
 # Auxiliary functions {{{
-invsum(x) = inv(sum(inv,x))
-invsum(f,x) = inv(sum(t->inv(f(t)), x))
+invsum(x) = inv(sum(inv, x))
+invsum(f, x) = inv(sum(t->inv(f(t)), x))
 
-unwind!(l::Vector{Impedor},::Type{T},x::Impedor) where T = push!(l,x)
-unwind!(l::Vector{Impedor},::Type{T},x::T) where T = unwind!(l,x)
+unwind!(l::Vector{Impedor}, ::Type{T}, x::Impedor) where T = push!(l, x)
+unwind!(l::Vector{Impedor}, ::Type{T}, x::T) where T = unwind!(l, x)
 # Auxiliary functions }}}
+
+# Printing functions {{{
+function _printconnection(io, p1, p2, v)
+    print(io, "\t(")
+    join(io, p1, ',')
+    print(io, ") to[")
+    show(io, MIME"text/circuitikz"(), v)
+    print(io, "] (")
+    join(io, p2, ',')
+    print(io, ") %\n")
+end
+
+printconnection(io, p1, p2, v; expandnetworks=false) = _printconnection(io, p1, p2, v)
+
+function printconnection(io, p1, p2, v::Series; expandnetworks=false)
+    if !expandnetworks
+        return _printconnection(io, p1, p2, v)
+    end
+    coords = collect(zip(range(p1[1], p2[1], length=length(v)+1), range(p1[2], p2[2], length=length(v)+1)))
+    for (i, c) = enumerate(v)
+        printconnection(io, coords[i], coords[i+1], c, expandnetworks=true)
+    end
+end
+
+function printconnection(io, p1, p2, v::Parallel; expandnetworks=false)
+    if !expandnetworks
+        return _printconnection(io, p1, p2, v)
+    end
+    l = 0.3 # Approximate length of a component, as a proportion of the total...
+    w = 0.2 # Approximate width of a component, absolute...
+    p1 = [p1...]
+    p2 = [p2...]
+    p3 = (1/2+l)*p1 .+ (1/2-l)*p2
+    p4 = (1/2-l)*p1 .+ (1/2+l)*p2
+    L = sqrt(sum((p2 .- p1).^2))
+    (c, s) = (p2-p1)./L
+    a1 = p3 .+ [s, -c] .* w*length(v)/2
+    a2 = p3 .+ [-s, c] .* w*length(v)/2
+    b1 = p4 .+ [s, -c] .* w*length(v)/2
+    b2 = p4 .+ [-s, c] .* w*length(v)/2
+    a = zip(range(a1[1], a2[1], length=length(v)), range(a1[2], a2[2], length=length(v)))
+    b = zip(range(b1[1], b2[1], length=length(v)), range(b1[2], b2[2], length=length(v)))
+    _printconnection(io, p1, p3, Short())
+    _printconnection(io, p2, p4, Short())
+    _printconnection(io, a1, a2, Short())
+    _printconnection(io, b1, b2, Short())
+    for (aa, bb, vv) in zip(a, b, v)
+        printconnection(io, aa, bb, vv, expandnetworks=true)
+    end
+end
+# Printing functions }}}
 
 end
