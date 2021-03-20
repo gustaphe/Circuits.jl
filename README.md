@@ -13,7 +13,7 @@ resistor and a capacitor in series and a capacitor and an inductor in parallel:
 ```julia
 c = @circuit begin
     b:(0,0) --> VoltageSource(3) --> (1,0) --> Resistor(4) --> Inductor(2) --> (1,1) --> a:(0,1)
-    :a --> Capacitor(1) || Inductor(4) --> :b
+    :a --> Capacitor(1) // Inductor(4) --> :b
 end
 ```
 

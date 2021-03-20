@@ -11,11 +11,7 @@ makedocs(;
         canonical="https://gustaphe.github.io/Circuits.jl",
         assets=String[],
     ),
-    pages=[
-        "Home" => "index.md",
-    ],
+    pages=["Home" => "index.md"],
 )
 
-deploydocs(;
-    repo="github.com/gustaphe/Circuits.jl",
-)
+deploydocs(; repo="github.com/gustaphe/Circuits.jl")

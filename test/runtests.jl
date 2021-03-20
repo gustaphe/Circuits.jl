@@ -1,6 +1,11 @@
 using Circuits
+using JuliaFormatter
 using Test
 
 @testset "Circuits.jl" begin
-    # Write your tests here.
+# No tests yet... TODO
+end
+
+@testset "Formatting" begin
+    @test format(Circuits; overwrite=false)
 end
