@@ -28,20 +28,20 @@ end # }}}
 
 function show(io::IO, m::MIME"text/plain", x::Circuit) # {{{
     return print(
-                 io,
-                 "Circuit with ",
-                 length(x.coordinates),
-                 " nodes, ",
-                 count(isa.(values(x.connections), Impedor)),
-                 " impedors and ",
-                 count(isa.(values(x.connections), Source)),
-                 " sources.",
-                )
+        io,
+        "Circuit with ",
+        length(x.coordinates),
+        " nodes, ",
+        count(isa.(values(x.connections), Impedor)),
+        " impedors and ",
+        count(isa.(values(x.connections), Source)),
+        " sources.",
+    )
 end # }}}
 
 function show(
-        io::IO, m::MIME"text/circuitikz", x::Circuit; shownodes=false, expandnetworks=false
-    ) # {{{
+    io::IO, m::MIME"text/circuitikz", x::Circuit; shownodes=false, expandnetworks=false
+) # {{{
     print(io, "\\draw %\n")
     for (k, v) in x.connections
         printconnection(io, x.coordinates[k[1]], x.coordinates[k[2]], v; expandnetworks)
@@ -89,15 +89,15 @@ function generate_circuit(arg::Expr)
         push_stuff!(e, coordinates, components)
     end
     return Expr(
-                :call,
-                :Circuit,
-                Expr(
-                     :call,
-                     :Dict,
-                     Expr.(:call, :(=>), QuoteNode.(keys(coordinates)), values(coordinates))...,
-                    ),
-                Expr(:call, :Dict, components...),
-               )
+        :call,
+        :Circuit,
+        Expr(
+            :call,
+            :Dict,
+            Expr.(:call, :(=>), QuoteNode.(keys(coordinates)), values(coordinates))...,
+        ),
+        Expr(:call, :Dict, components...),
+    )
 end
 
 """
@@ -126,9 +126,9 @@ function push_stuff!(e::Expr, coord, comp)
         if left isa CircuitIndex
             # coordinate --> component
             push!(
-                  comp,
-                  :(($(QuoteNode(left)), $(QuoteNode(right.index))) => $(right.component)),
-                 )
+                comp,
+                :(($(QuoteNode(left)), $(QuoteNode(right.index))) => $(right.component)),
+            )
             return left
         end
         if right isa CircuitIndex
@@ -191,54 +191,54 @@ function component_helper(type, name, circuitikzname, parameters...)
 
     #  Struct generation {{{
     structexpr = Expr(
-                      :struct,
-                      false,
-                      Expr(:<:, isempty(parameters) ? name : Expr(:curly, name, :(T <: Number)), type),
-                      Expr(:block, Expr.(:(::), parameters, :T)...),
-                     )
+        :struct,
+        false,
+        Expr(:<:, isempty(parameters) ? name : Expr(:curly, name, :(T <: Number)), type),
+        Expr(:block, Expr.(:(::), parameters, :T)...),
+    )
     #  }}}
 
     #  Show generation {{{
     showexpr = Expr(
-                    :function,
-                    Expr(:call, :show, :(io::IO), Expr(:(::), :x, name)),
-                    Expr(
-                         :block,
-                         Expr(:call, :print, :io, string(name)),
-                         if isempty(parameters)
-                             nothing
-                         else
-                             Expr(
-                                  :call, :print, :io, '(', Expr.(:., :x, QuoteNode.(parameters))..., ')'
-                                 )
-                         end,
-                        ),
-                   )
+        :function,
+        Expr(:call, :show, :(io::IO), Expr(:(::), :x, name)),
+        Expr(
+            :block,
+            Expr(:call, :print, :io, string(name)),
+            if isempty(parameters)
+                nothing
+            else
+                Expr(
+                    :call, :print, :io, '(', Expr.(:., :x, QuoteNode.(parameters))..., ')'
+                )
+            end,
+        ),
+    )
     #  }}}
 
     #  Circuitikz generation {{{
     circuitikzexpr = Expr(
-                          :function,
-                          Expr(:call, :show, :(io::IO), :(::MIME"text/circuitikz"), Expr(:(::), :x, name)),
-                          Expr(
-                               :block,
-                               Expr(:call, :print, :io, string(circuitikzname)),
-                               if isempty(parameters)
-                                   nothing
-                               else
-                                   Expr(
-                                        :block,
-                                        :(print(io, '=')),
-                                        Expr(
-                                             :call,
-                                             :print,
-                                             :io,
-                                             Expr(:call, :latexify, Expr(:., :x, QuoteNode(first(parameters)))),
-                                            ),
-                                       )
-                               end,
-                              ),
-                         )
+        :function,
+        Expr(:call, :show, :(io::IO), :(::MIME"text/circuitikz"), Expr(:(::), :x, name)),
+        Expr(
+            :block,
+            Expr(:call, :print, :io, string(circuitikzname)),
+            if isempty(parameters)
+                nothing
+            else
+                Expr(
+                    :block,
+                    :(print(io, '=')),
+                    Expr(
+                        :call,
+                        :print,
+                        :io,
+                        Expr(:call, :latexify, Expr(:., :x, QuoteNode(first(parameters)))),
+                    ),
+                )
+            end,
+        ),
+    )
     #  }}}
 
     return Expr(:block, structexpr, showexpr, circuitikzexpr)
@@ -258,21 +258,24 @@ end
 @component VoltageSource SinusSource vsourcesin U ω
 # }}}=#
 
+# Network {{{
+function Network(::Type{T}, args::Tuple{Vararg{<:Impedor}}) where {T<:Network}
+    l = Impedor[]
+    for x in args
+        # Make sure a Series doesn't contain Series objects (because that would be very silly)
+        unwind!(l, T, x)
+    end
+    isone(length(l)) && return l[1]
+    return T(l)
+end
+# }}}
+
 # Series {{{
 struct Series <: Network
     l::Vector{<:Impedor}
 end
 
-# Constructor {{{
-function Series(args::Vararg{<:Impedor})
-    l = Impedor[]
-    for x in args
-        # Make sure a Series doesn't contain Series objects (because that would be very silly)
-        unwind!(l, Series, x)
-    end
-    return Series(l)
-end
-# Constructor }}}
+Series(args::Vararg{<:Impedor}) = Network(Series, args)
 
 # Show {{{
 show(io::IO, x::Series) = join(io, x, " --> ")
@@ -288,7 +291,6 @@ length(x::Series) = length(x.l)
 # Iteration }}}
 
 -->(a::Impedor, b::Impedor) = Series(a, b)
-
 # Series }}}
 
 # Parallel {{{
@@ -296,15 +298,7 @@ struct Parallel <: Network
     l::Vector{<:Impedor}
 end
 
-# Constructor {{{
-function Parallel(args::Vararg{<:Impedor})
-    l = Impedor[]
-    for x in args
-        unwind!(l, Parallel, x)
-    end
-    return Parallel(l)
-end
-# Constructor }}}
+Parallel(args::Vararg{<:Impedor}) = Network(Parallel, args)
 
 # Show {{{
 function show(io::IO, x::Parallel)
@@ -324,7 +318,6 @@ length(x::Parallel) = length(x.l)
 # Iteration }}}
 
 //(a::Impedor, b::Impedor) = Parallel(a, b)
-
 # Parallel }}}
 
 # Parameters of components {{{
@@ -426,11 +419,19 @@ function Network(c::Circuit, a::CircuitIndex, b::CircuitIndex) end
 # Extract network }}}
 
 # Auxiliary functions {{{
+# Reciprocal sum {{{
 invsum(x) = inv(sum(inv, x))
 invsum(f, x) = inv(sum(t -> inv(f(t)), x))
+# }}}
 
-unwind!(l::Vector{Impedor}, ::Type{T}, x::Impedor) where {T} = push!(l, x)
-unwind!(l::Vector{Impedor}, ::Type{T}, x::T) where {T} = unwind!(l, T, x)
+# Unwind {{{
+unwind!(l::Vector{Impedor}, ::Type{T}, x) where {T} = push!(l, x)
+function unwind!(l::Vector{Impedor}, ::Type{T}, s::T) where {T}
+    for x in s
+        unwind!(l, T, x)
+    end
+end
+# Unwind }}}
 # Auxiliary functions }}}
 
 # Printing functions {{{
@@ -451,11 +452,11 @@ function printconnection(io, p1, p2, v::Series; expandnetworks=false)
         return _printconnection(io, p1, p2, v)
     end
     coords = collect(
-                     zip(
-                         range(p1[1], p2[1]; length=length(v) + 1),
-                         range(p1[2], p2[2]; length=length(v) + 1),
-                        ),
-                    )
+        zip(
+            range(p1[1], p2[1]; length=length(v) + 1),
+            range(p1[2], p2[2]; length=length(v) + 1),
+        ),
+    )
     for (i, c) in enumerate(v)
         printconnection(io, coords[i], coords[i + 1], c; expandnetworks=true)
     end
@@ -500,27 +501,27 @@ function latexstandalone(c::Circuit, filename::AbstractString; kwargs...)
     temp = tempname()
     open(temp * ".tex", "w") do f
         print(
-              f,
-              raw"""
-              \documentclass{standalone}
-              \usepackage{circuitikz}
-              \begin{document}
-                  \begin{tikzpicture}[x=4cm,y=4cm]
-                      """,
-                     )
+            f,
+            raw"""
+            \documentclass{standalone}
+            \usepackage{circuitikz}
+            \begin{document}
+                \begin{tikzpicture}[x=4cm,y=4cm]
+                    """,
+        )
         show(f, MIME"text/circuitikz"(), c; kwargs...)
         print(
-              f,
-              raw"""
-          \end{tikzpicture}
-      \end{document}
-      """,
-     )
+            f,
+            raw"""
+        \end{tikzpicture}
+    \end{document}
+    """,
+        )
     end
     run(`xelatex --interaction=nonstopmode --output-dir=$(tempdir()) $temp.tex`)
     return run(
-               `convert -density 300 $temp.pdf -background white -flatten -quality 90 $filename`
-              )
+        `convert -density 300 $temp.pdf -background white -flatten -quality 90 $filename`
+    )
 end
 # Image }}}
 

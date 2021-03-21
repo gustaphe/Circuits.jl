@@ -3,7 +3,7 @@ using JuliaFormatter
 using Test
 
 @testset "Circuits.jl" begin
-# No tests yet... TODO
+    # No tests yet... TODO
 end
 
 @testset "Formatting" begin
