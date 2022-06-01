@@ -8,6 +8,7 @@ JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 
 [compat]
+JuliaFormatter = "1"
 Latexify = "0.14"
 julia = "1"
 
