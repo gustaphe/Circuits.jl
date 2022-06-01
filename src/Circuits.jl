@@ -384,7 +384,7 @@ function simplify(x::S, Greedy::Type, Shy::Type) where {S}
     any(types .<: Greedy) && return Greedy()
     all(types .<: Shy) && return Shy()
     l = Impedor[]
-    for T in filter(t -> !<:(t, Shy), types)
+    for T in filter(t -> !<:(t,Shy), types)
         append!(l, simplify(T[filter(t -> isa(t, T), x.l)...], S))
     end
     return S(l)
