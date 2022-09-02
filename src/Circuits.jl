@@ -6,6 +6,7 @@ export Resistor, Inductor, Capacitor, Short, Open
 export Series, Parallel
 export Battery, VSource, SinusSource
 
+export impedance
 export voltageDivision, currentDivision, simplify, -->
 export latexstandalone
 
