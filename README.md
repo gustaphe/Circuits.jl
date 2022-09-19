@@ -5,14 +5,14 @@ Generate, visualize and analyze electrical networks.
 
 ## Creating a circuit
 
-The simplest way to create a circuit is through the `@circuit` macro.  An
+The simplest way to create a circuit is through the `@circuit` macro.  As an
 example, here a square network is generated with two named (`a` and  `b`) and
 two unnamed (or rather not explicitly named) nodes, one voltage source, a
 resistor and a capacitor in series and a capacitor and an inductor in parallel:
 
 ```julia
 c = @circuit begin
-    b:(0,0) --> VoltageSource(3) --> (1,0) --> Resistor(4) --> Inductor(2) --> (1,1) --> a:(0,1)
+    b:(0,0) --> VSource(3) --> (1,0) --> Resistor(4) --> Inductor(2) --> (1,1) --> a:(0,1)
     :a --> Capacitor(1) // Inductor(4) --> :b
 end
 ```
@@ -59,7 +59,7 @@ Series(Resistor(4),Inductor(2),Parallel(Capacitor(1),Inductor(4)))`),
 resistor experiences a voltage drop of ``V₀``, and the rest of the components
 none (as expected for DC voltage). `voltageDivision(n,1im) ==  [0.97 - 0.16im,
 0.081 + 0.48im, [-0.054 - 0.32im, -0.054 - 0.32im]]` (so at ``1`` frequency
-unit, those are the respective responses in each component)
+unit, those are the respective responses in each component).
 
 Current division works the same: `currentDivision(n) == [1, 1, [0.0, NaN]]`
 (the NaN is from an `Inf/Inf`, a good symbolic package will probably fix this,
