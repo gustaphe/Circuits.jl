@@ -143,8 +143,8 @@ function push_stuff!(e::Expr, coord, comp)
     if head === :call
         if args[1] === ://
             # component // component
-            left = push_stuff!(args[1], coord, comp)
-            right = push_stuff!(args[2], coord, comp)
+            left = push_stuff!(args[2], coord, comp)
+            right = push_stuff!(args[3], coord, comp)
             return :(Parallel($left, $right))
         end
         if args[1] === :(:)
